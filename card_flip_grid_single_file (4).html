@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>아이스브레이킹 카드</title>
+  <style>
+    /* ====== Warm dark theme (desktop) ====== */
+    :root{ --bg:#1b1411; --card:#2a211d; --accent:#d6a77a; --ink:#f3eee8; --muted:#cdbfb6; }
+    html,body{height:100%; margin:0}
+    body{
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, Apple SD Gothic Neo, "Apple Color Emoji", "Segoe UI Emoji";
+      background:linear-gradient(135deg,#201612,#2a1e18 40%,#1b1411);
+      color:var(--ink);
+    }
+    .wrap{max-width:1100px;margin:0 auto;padding:28px}
+    header{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:18px}
+    h1{font-size:18px;letter-spacing:.2px;margin:0}
+    .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    button, select{background:#241b16;border:1px solid #4b3a31;color:var(--ink);padding:10px 12px;border-radius:12px;cursor:pointer}
+    button:hover{border-color:#6a5548}
+    .grid{display:grid;grid-template-columns: repeat( auto-fill, minmax(160px,1fr) ); gap:14px}
+
+    .card-w{perspective:1000px;aspect-ratio:3/4;position:relative;min-height:180px}
+    .card-w::before{content:"";display:block;padding-top:133.333%} /* iOS fallback */
+
+    .card{position:absolute;inset:0;transform-style:preserve-3d;-webkit-transform-style:preserve-3d;transition:transform .6s cubic-bezier(.2,.7,.2,1);will-change:transform}
+    .card.flipped{transform:rotateY(180deg)}
+
+    .face{position:absolute;inset:0;border-radius:18px;box-shadow:0 8px 20px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;padding:16px;text-align:center;backface-visibility:hidden;-webkit-backface-visibility:hidden}
+    .front{background:radial-gradient(120% 120% at 80% 0%, #32261f 0%, #2a211d 60%, #231b17 100%); border:1px solid #4b3a31}
+    .back{background:linear-gradient(160deg,#30241d,#241b16); transform:rotateY(180deg); border:1px solid #5a463c}
+
+    .q{font-size:17px;line-height:1.55;letter-spacing:.1px}
+    .num{position:absolute;top:10px;left:12px;font-size:12px;color:var(--muted)}
+    .hint{position:absolute;bottom:10px;right:12px;font-size:11px;color:var(--muted)}
+    .badge{font-size:11px;padding:6px 8px;border:1px dashed #6a5548;border-radius:999px;color:var(--accent)}
+    footer{margin-top:18px;color:var(--muted);font-size:12px;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+    .pill{display:inline-flex;gap:6px;align-items:center;padding:8px 10px;border-radius:999px;border:1px solid #4b3a31;background:#221813}
+    .link{color:var(--accent);text-decoration:none}
+    .link:hover{text-decoration:underline}
+
+    /* ====== Mobile: white theme (<=600px) ====== */
+    @media (max-width: 600px) {
+      body{ background:#faf7f4; color:#2c2520; }
+      .wrap{ padding:20px }
+      .grid{ grid-template-columns:repeat(2,1fr); gap:12px }
+      .card-w{ aspect-ratio:2.1/3.2; min-height:200px }
+      .card-w::before{ padding-top:152.381% } /* fallback for mobile ratio */
+      .face{ border-radius:14px; box-shadow:0 4px 10px rgba(0,0,0,.08) }
+      .front{ background:#ffffff; border:1px solid #e1d8d3; color:#3a2f29 }
+      .back{ background:#fffaf7; border:1px solid #d8ccc5; color:#3a2f29 }
+      .badge{ border-color:#d8c3b2; color:#8a6a4d }
+      button, select{ background:#ffffff; color:#3a2f29; border:1px solid #e1d8d3 }
+      button:hover{ border-color:#d1c3bb }
+      .pill{ background:#ffffff; border-color:#e1d8d3; color:#3a2f29 }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>질문 카드 선택</h1>
+      <div class="controls">
+        <button id="shuffleBtn" title="카드 순서를 섞기">섞기</button>
+        <button id="resetBtn" title="모든 카드를 앞면으로">리셋</button>
+        <select id="layoutSelect" title="그리드 밀도">
+          <option value="auto">자동</option>
+          <option value="tight">조밀</option>
+          <option value="loose">여유</option>
+        </select>
+        <button id="exportBtn" title="현재 질문 세트 내보내기 (JSON)">내보내기</button>
+      </div>
+    </header>
+
+    <div id="grid" class="grid" aria-live="polite"></div>
+
+    <footer>
+      <span class="pill">카드를 클릭하면 뒤집힙니다</span>
+      <span>질문 교체: <a class="link" href="#" id="how">아래 코드의 <em>questions</em> 배열을 수정</a></span>
+    </footer>
+  </div>
+
+  <script>
+    // 1) 여기 questions 배열을 실제 PDF 카드 문구로 바꾸면 됩니다.
+    //    지금은 예시 문구로 채워두었습니다.
+    const questions = [
+      "신앙적인 고민이 있을 때, 누구와 이야기하는 편인가요?",
+      "나의 하나님은? 1) 나를 이끄시는 분 2) 나란히 걷는 분 3) 내 뒤에서 지키시는 분",
+      "믿음 소망 사랑 중에 가장 어려운 것은 무엇인가요?",
+      "크리스천으로 사는 가장 좋은 점은( )인 것 같다.",
+      "이번 주의 감사한 일은 무엇인가요?",
+      "처음 교회에 어떻게 나오게 되었나요?",
+      "교회에서 맡고 있는/맡았던/해보고싶은 사역이 있나요?",
+      "그러지 않으려고 하는데 자꾸 하나님보다 우선수위가 높아지려 하는 것이 있나요?",
+      "감정이 뜨거운 신앙 vs 차분히 생각하는 신앙, 당신은 어디에 가깝나요?"
+    ];
+
+    // 2) 그리드 밀도 프리셋
+    const grid = document.getElementById('grid');
+    const layoutSelect = document.getElementById('layoutSelect');
+    function applyLayout(mode){
+      if(mode==='tight') grid.style.gap = '10px';
+      else if(mode==='loose') grid.style.gap = '20px';
+      else grid.style.gap = '14px';
+    }
+    layoutSelect.addEventListener('change', e=>applyLayout(e.target.value));
+
+    // 3) 카드 생성
+    function createCard(idx, text){
+      const w = document.createElement('div');
+      w.className = 'card-w';
+
+      const c = document.createElement('div');
+      c.className = 'card';
+      c.setAttribute('role','button');
+      c.setAttribute('tabindex','0');
+      c.setAttribute('aria-pressed','false');
+
+      const front = document.createElement('div');
+      front.className = 'face front';
+      front.innerHTML = `<span class="num">#${idx+1}</span><span class="badge">카드 선택</span>`;
+
+      const back = document.createElement('div');
+      back.className = 'face back';
+      back.innerHTML = `<span class="num">#${idx+1}</span><div class="q">${escapeHtml(text)}</div><span class="hint">다시 클릭하면 뒤집힘</span>`;
+
+      c.appendChild(front); c.appendChild(back); w.appendChild(c);
+
+      function flip(){
+        const flipped = c.classList.toggle('flipped');
+        c.setAttribute('aria-pressed', flipped ? 'true':'false');
+      }
+      c.addEventListener('click', flip);
+      c.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); flip(); }});
+
+      return w;
+    }
+
+    function mountCards(list){
+      grid.innerHTML='';
+      list.forEach((q,i)=> grid.appendChild(createCard(i,q)));
+    }
+
+    // 4) 섞기 & 리셋
+    function shuffle(arr){
+      const a = arr.slice();
+      for(let i=a.length-1;i>0;i--){
+        const j = Math.floor(Math.random()*(i+1));
+        [a[i],a[j]] = [a[j],a[i]];
+      }
+      return a;
+    }
+
+    document.getElementById('shuffleBtn').addEventListener('click', ()=>{
+      const shuffled = shuffle(questions);
+      mountCards(shuffled);
+    });
+
+    document.getElementById('resetBtn').addEventListener('click', ()=>{
+      mountCards(questions);
+      document.querySelectorAll('.card').forEach(el=>el.classList.remove('flipped'));
+    });
+
+    // 5) JSON 내보내기 (현재 세트)
+    document.getElementById('exportBtn').addEventListener('click', ()=>{
+      const blob = new Blob([JSON.stringify(questions, null, 2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'questions.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // 유틸: XSS 방지
+    function escapeHtml(str){
+      return String(str).replace(/[&<>\"]/g, s => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[s]));
+    }[s]));
+    }
+
+    // 초기 마운트
+    applyLayout('auto');
+    mountCards(questions);
+  </script>
+</body>
+</html>
